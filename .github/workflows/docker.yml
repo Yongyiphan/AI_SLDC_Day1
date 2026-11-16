@@ -1,0 +1,121 @@
+name: Build and push image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - bundle
+      - .github/workflows/docker.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main and pinned submodules
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Node.js for dependency audit
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Audit frontend dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+      - name: Test frontend
+        run: npm test --prefix frontend -- --watch=false --browsers=ChromeHeadless
+
+      - name: Test CLI
+        run: npm test --prefix cli
+
+      - name: Build frontend
+        run: npm run build --prefix frontend
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051
+        with:
+          images: ghcr.io/yongyiphan/ai_sldc_day1
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Build image locally for scanning
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: ./bundle
+          tags: ${{ steps.meta.outputs.tags }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan image for high and critical vulnerabilities
+        run: >-
+          docker run --rm
+          -v /var/run/docker.sock:/var/run/docker.sock
+          -v "$HOME/.cache/trivy:/root/.cache/"
+          aquasec/trivy:0.68.2 image
+          --exit-code 1
+          --ignore-unfixed
+          --severity HIGH,CRITICAL
+          ghcr.io/yongyiphan/ai_sldc_day1:latest
+
+      - name: Smoke test API, redirect, and bundled UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker rm -f snip-smoke >/dev/null 2>&1 || true
+          trap 'docker rm -f snip-smoke >/dev/null 2>&1 || true' EXIT
+          docker run -d --name snip-smoke -p 3000:3000 ghcr.io/yongyiphan/ai_sldc_day1:latest
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3000/api/links >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:3000/ >/dev/null
+          created=$(curl --fail --silent -X POST http://127.0.0.1:3000/api/links \
+            -H 'content-type: application/json' \
+            -d '{"url":"https://example.com"}')
+          code=$(printf '%s' "$created" | jq -er '.code')
+          redirect_status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            "http://127.0.0.1:3000/$code")
+          test "$redirect_status" = "302"
+          curl --fail --silent http://127.0.0.1:3000/api/links \
+            | jq -e --arg code "$code" 'map(select(.code == $code))[0].hits == 1' >/dev/null
+
+      - name: Publish verified image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: ./bundle
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

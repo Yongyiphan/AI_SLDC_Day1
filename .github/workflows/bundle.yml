@@ -1,0 +1,54 @@
+name: Build bundle
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bundle-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main and its submodules
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          submodules: true
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+
+      - name: Set commit identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Update tracked source branches
+        run: git submodule update --init --remote backend frontend cli
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Audit frontend dependencies
+        run: npm audit --prefix frontend --audit-level=high
+
+      - name: Test frontend
+        run: npm test --prefix frontend -- --watch=false --browsers=ChromeHeadless
+
+      - name: Test CLI
+        run: npm test --prefix cli
+
+      # Push workflows only run from the branch containing the workflow file.
+      # This workflow intentionally refreshes source branches hourly instead.
+      - name: Build and publish bundle
+        run: node scripts/build-bundle.mjs --push
