@@ -120,7 +120,7 @@ git(["add", "-A", "--", "README.md", "scripts/build-bundle.mjs", "backend", "fro
 const mainChanged = commitStagedChanges(root, "Update Snip release bundle and source pointers");
 
 if (push) {
-  if (bundleChanged || mainChanged) git(["push", "origin", "HEAD:bundle"], bundle);
+  git(["push", "origin", "HEAD:bundle"], bundle);
   git(["push", "origin", "HEAD:main"]);
 }
 
