@@ -6,11 +6,16 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const bundle = join(root, "bundle");
 const push = process.argv.includes("--push");
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+const npm = "npm";
+const npx = "npx";
 
 function run(command, args, cwd) {
-  execFileSync(command, args, { cwd, stdio: "inherit", windowsHide: true });
+  execFileSync(command, args, {
+    cwd,
+    shell: process.platform === "win32",
+    stdio: "inherit",
+    windowsHide: true,
+  });
 }
 
 function git(args, cwd = root) {
