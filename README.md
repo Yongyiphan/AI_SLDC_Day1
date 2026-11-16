@@ -25,7 +25,7 @@ git clone --recurse-submodules https://github.com/Yongyiphan/AI_SLDC_Day1.git
 
 ## Run locally
 
-Requirements: Bun 1.x, Node.js 20+ with npm. From the `main` checkout, use three
+Requirements: Bun 1.x, Node.js 22.12+ with npm. From the `main` checkout, use three
 terminals:
 
 ```powershell
