@@ -1,6 +1,8 @@
 # Snip Frontend
 
-Angular 19 client for the Snip URL shortener. It uses the backend at `http://localhost:3000`.
+Angular 22 client for the Snip URL shortener. The client calls the same-origin
+`/api/links` endpoint. `ng serve` proxies API requests to the local backend at
+`http://localhost:3000`; the bundled app uses the API served by the same host.
 
 Run the backend in one terminal with `bun start`, then run this app with:
 
