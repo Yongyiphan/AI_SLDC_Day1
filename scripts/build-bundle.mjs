@@ -10,12 +10,16 @@ const npm = "npm";
 const npx = "npx";
 
 function run(command, args, cwd) {
-  execFileSync(command, args, {
-    cwd,
-    shell: process.platform === "win32",
-    stdio: "inherit",
-    windowsHide: true,
-  });
+  const options = { cwd, stdio: "inherit", windowsHide: true };
+  if (process.platform === "win32" && (command === "npm" || command === "npx")) {
+    execFileSync(
+      process.env.ComSpec || "cmd.exe",
+      ["/d", "/s", "/c", `${command} ${args.join(" ")}`],
+      options,
+    );
+    return;
+  }
+  execFileSync(command, args, options);
 }
 
 function git(args, cwd = root) {
